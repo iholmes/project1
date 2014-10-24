@@ -10,7 +10,7 @@ Despite the very low individual dispersal distances, the species is widespread t
 
 To test these hypotheses, we used a restriction enzyme-based high throughput sequencing protocol generate to sequence data from Xantusia vigilis collected from various locations in the northern and southern populations. The protocol generates a large number of single nucleotide polymorphisms, which we use in downstream analyses. Here, I present the results form a subset of 16 of those individuals, taken from 10 collection locations. Despite the low sample size, population genetic results from a large number of loci (~10,000-20,000) from a few individuals can be as robust as inferences drawn form a large number of individuals at fewer (~20-50) loci (CITE). Given the low dispersal distances, our probability of getting an unrepresentative long-distance migrant is low.
 
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 # MAP
 pop <- c("WS1", "MVZ1", "MVZ2", "MVZ3", "OP", "DC1", "DC2", "CY1", "CY2", "BAL", "QT", "WS2", "TUM", "GRIS", "SE1", "SE2")
 
@@ -38,7 +38,7 @@ The two hypotheses ("North down" and "South up") lead to contrasting predictions
 
 Our first step in testing the "South up" and "North down" is to identify the SNPs that conform to the modeling expectations for our downstream applications. Most population genetic statistics expect that all markers 1) meet Hardy-Weinburg expectations, 2) not be in linkage disequilibrium, and, for some applications 3) have no missing data. In a datset with many markers, some SNPs will inevitably be in linkage disequilibrium or out of Hardy-Weinburg equilibrium. Identifying these SNPs and eliminating them from downstream applications is critical to producing reliable results.
 
-```{r}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 #first load libraries - the first four are genome-data focused 
 library(RADami)
 library(PopGenome)
@@ -53,7 +53,7 @@ library(fields)
 
 I demultiplexed the data and clustered reads first within and then bewteen individuals using the pyRAD pipeline, which prepares data from .fastq files to be read into the alignment programs Muscle and Usearch, and then prepares output files suitable for further analysis. I read the data from 16 aligned individuals into R.
 
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 # first I read in a text document that has my SNP data formatted for a commonly-used population genetics
 # program, STRUCTURE. It has the individuals (16) as rows, with two rows per individual to represent
 # a diploid genotype. Each column is a SNP. Missing data is coded with a -9, and individual SNPS are 
@@ -61,13 +61,14 @@ I demultiplexed the data and clustered reads first within and then bewteen indiv
 setwd("~/Desktop")
 
 str <- read.table("run1.str")
+
+# convert to matrix for manipulation purposes
+str <- as.matrix(str)
 ```
 
 The dataset has `r nrow(str)/2` individuals and `r ncol(str)` loci. The first filtering step I applied was to remove all SNPs with more than two states. The reduced dataset is compatible with more R libraries than the original, as many libraries only take SNP data in this format. It also removes SNPs with missing data. 
 
-```{r}
-# convert to matrix for manipulation purposes
-str <- as.matrix(str)
+```{r, echo=FALSE, eval=TRUE}
 
 # find the number of unique entries in each column of the matrix, save it as a vector
 count <- apply(str, 2, function(x)length(unique(x)))
@@ -160,7 +161,7 @@ The reduced dataset has `r ncol(clip6)` loci. We use this data set to get some b
 about the alleles.
 
 The first filtering step we applied was to identify loci that have a significant degree of linkage disequilibrium. We assessed linkage disequilibrium between all pairs of individuals and loci using the "ld" command in snpStats library. Due to our laboratory procedure, which begins by digesting the template DNA using restriction enzymes, our SNPs are not in any biologically relevant order. As such, this procedure identifies pairs of SNPs that are out of linkage equilibrium, rather than providing a linkage map. Further processing will be necessary to identify linkage groups.
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 ld <- ld(snpmat, stats="R.squared", depth=100, symmetric=T)
 ld <- as.matrix(ld)
 
@@ -168,16 +169,16 @@ diag(ld) <-1
 ```
 
 We use the "image" function to display a representative group of 100 x 100 loci. The diagonal elements are set to 1. Lighter colors indicate greater linkage diseqilibrium.
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 image(ld[1:100,1:100])
 ```
 We found that only `r sum(ld[ld>0.2])/(nrow(ld)*ncol(ld))*100`percent of the pairs of SNPs have a linkage disequilibrium value of less than 0.2, indicating that there is considerable disequilibrium in our sample. 
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 hist(ld[ld>0.2 & ld<1], xlab="pairwise linkage disequilibrium values", main="")
 ```
 
 We identified all SNPs that had a pairwise linkage disequilibrium score greater than 0.5. Although still not perfect, this filter should reduce the effect of spurious results due to assumption voilations in downstream analyses.
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 # first set the diagonals to zero so they are not the maximum
 diag(ld) <-0
 max <- apply(ld, 2, max)
@@ -194,7 +195,7 @@ snpmat.ld <- new("SnpMatrix", with.ld)
 After removing high-linkage disequilibrium SNPs, we have a matrix of `r ncol(no.ld)` SNPs.
 
 We calculated further summary statistics on both the with-ld and without-ld matrices.
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 # get the column summary - this gives an overview of the loci
 snpsum <- col.summary(snpmat)
 snpsum.no.ld <- col.summary(snpmat.no.ld)
@@ -210,7 +211,7 @@ par(mfrow=c(1,1))
 
 Nearly half of the loci (`r sum(snpsum$MAF>0.2)/length(snpsum$MAF)*100` percent) have a minor allele frequency greater than 0.2 in the full matrix. A smaller percentage of the loci in the no-LD matrix (`r sum(snpsum.no.ld$MAF>0.2)/length(snpsum.no.ld$MAF)*100` percent) have a minor allele frequency greater than 0.2, while `r sum(snpsum.ld$MAF>0.2)/length(snpsum.no.ld$MAF)*100` of the LD SNPs have a minor allele frequency greater than 0.2 This result raises the concern that the LD metric simply selected for SNPs that have a low MAF, rather than identifying true linkage diseqilibrium. Adding further samples may resolve the difference, although checking MAF when identifying pairs of SNPs in LD could be an important step in quality filtering even in a larger dataset. 
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, eval=TRUE}
 par(mfrow=c(2,2))
 hist(snpsum$z.HWE, xlab="HWE Z score", main="All")
 hist(snpsum.no.ld$z.HWE, xlab="HWE Z score", main="No LD")
@@ -224,7 +225,7 @@ In the LD-removed dataset, `r sum(snpsum.no.ld$z.HWE>-2)/length(snpsum.no.ld$z.H
 
 IN the LD set, `r sum(snpsum.ld$z.HWE>-2)/length(snpsum.no.ld$z.HWE)*100` percent of the alleles are in Hardy Weinburg equilibrium. The LD set more closely parallels the complete set than the non-LD set. 
 
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 par(mfrow=c(2,2))
 by.sample <- row.summary(snpmat)
 
@@ -300,8 +301,10 @@ Heterozygosity is low throughout the sample. This indicates that most of the var
 After having worked with the high- and low-LD SNP data sets in parallel with the full dataset, it is clear that linkage disequilibrium plays a large role in the observed distribution of the data. Determining the precise role and hypothesizing about the demographic events that led to the high observed linkage disequilibrium will require a larger dataset. At present, we will proceed with the full dataset for most further analyses. The first critical analysis for differentiating between the "North down" and "South up" hypotheses is building a tree to see whether the northern populations are nested within the southern populations ("South up"), or vice versa. To build the tree, we used the R packages "adegenet" and "ape." We first built a pairwise matrix of Nei's genetic distance between each individual in the dataset using the adegenet package. We used that distance matrix to build a neighbor joining tree with the package "ape."  
 
 
-```{r}
-loc <- read.structure("run1.str", n.ind=16, n.loc=17291, col.lab=1)
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+setwd("~/Desktop")
+loc <- read.structure("run1.str", n.ind=16, n.loc=17291, col.lab=1, row.marknames=0, col.pop=0, 
+                      col.others=0, onerowperind=FALSE)
 loc <- na.replace(loc, "0")
 
 pop2 <- c("WS1", "MVZ1", "MVZ2", "MVZ3", "OP", "DC1", "DC2", "CY1", "CY2", "BAL", "QT", "WS2", "TUM", "GRIS", "SE1", "SE2")
@@ -324,29 +327,13 @@ par(mfrow=c(1,1))
 
 The tree conforms exactly to the expectations of the "North down" hypothesis. Three of the four  more southerly populations (CY, BA, MVZ3 and QT) are a monophyletic group nested within the northern samples. SE, TUM, and GRIS also form monophyletic group, while the WS saample, MVZ1 and 2, and OP are in a large polytomy at the base of the tree. 
 
-```{r}
-n.s <- c("n", "n", "n","s", "n", "s", "s", "s","s","s","s","n","n","n","n","n")
-pops <- cbind(pop,n.s, clip6)
-
-pops <- pops[order(pops[,2]),]
-
-freq <- makefreq(genepop)
-
-north <- seppop(loc, n.s, res.type = "genind")
-
-names(north)
-
-north$n
-north$n@tab[,1:20]
-```
-
 To assess the genetic clusters in the data, we used a principle components analysis (PCA). This is a method that identifies mutually perpendicular axes of variation in the data, and assigns coordinates to each individual with respect to those points. Individuals that occur in close proximity to each other in principle coordinate space are considered a genetic group. The method does not assume linkage disequilibium or Hardy Weinburg equilibrium, making it ideal for our dataset, which violates both of these assumptions at a large proportion of loci. 
 
 Since I have a large number of loci available, I resampled 100 of them 50 times. Resampling will speed computation. It also generates an empirical quasi-confidence interval, as I can track the pairwise distance in PC-space between all groups at each iteration, and determine the standard error of those pairwise distances. I would consider two groups with a short pairwise mean distance in PC-space but non-overlapping confidence intervals to be more distinct genetically than two groups whose mean is larger but whose standard errors overlap. Calculating a single location based on the full dataset does not provide this type of confidence interval estimate. 
 
 To implement this method, I first transform the data into PC-space. After the transformation, I perform k-means clustering at values of k from 2 to 10, which is the number of geographical locations where samples were collected. I choose the optimal k by determining which k-value has the lowest Bayesian Information Criterion associated with it. By looking at multiple resampled data sets, I observed that the optimal value for the number of PCA axes to retain for analysis was 15, and the k value with the lowest associated BIC was 4. With these clusters, I perform a discriminant analysis of principle components to determine the pairwise distance between each cluster in PC-space.
 
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 dist.mat <- matrix(NA, ncol=16, nrow=50)
 
 for(i in 1:50){
@@ -380,7 +367,7 @@ av.sterr <- matrix(sterr, ncol=4, nrow=4)
 ```
 To return to a two-axis system, I apply multidimensional scaling with two axes retained to the mean pairwise distance matrix generated from the resampled loci. I plot the loci in MDS-coordinate space. To related the standard error generated by bootstrapping to the new coordinate system, I find SE/mean calculated from the distance matrices. I then find the MDS-space distance and plot "standard error bars" on both sides of the point parallel to the line between the two points. 
 
-```{r}
+```{r, echo=FALSE, eval=TRUE}
 mds <- cmdscale(av.dist, k = 2)
 
 plot(mds[,1], mds[,2], col=c("red", "yellow", "green", "blue"), pch=15, cex=0.3)
