@@ -4,11 +4,11 @@ author: "Iris"
 date: "October 19, 2014"
 output: html_document
 ---
-This project is designed to assess the historical demography and current rates of genetic connectivity bewteen populations of night lizard (Xantusia vigilis) in central and southern California. Xantusia vigilis is a small, long-lived lizard that rarely travels beyond the small set of cover objects that make up its territory. Juveniles have a dispersal stage, but rarely move more than 200 meters from their place of birth. Given their life history, we expect low gene flow between even relatively geographically close (>10 km of separation) sampling locations. 
+This project is designed to assess the historical demography and current rates of gene flow bewteen populations of the Desert night lizard (Xantusia vigilis) in central California. Xantusia vigilis is a small, long-lived lizard that rarely travels beyond the small set of cover objects that make up its territory. Juveniles have a dispersal stage, but rarely move more than 200 meters from their place of birth. Given their life history, we expect to detect low gene flow rates between even relatively geographically close (>10 km of separation) sampling locations. 
 
-Despite the very low individual dispersal distances, the species is widespread throughout the southwestern US. Its most common cover object are yuccas, a succlent desert shrub. At the species' northern range limit, it has a disjunct population separated from the rest of the range by over 50 km (CHECK!). No genetic work has been done on this population, so it is not know whether the population represents a recent colonization event from the southern range ("South up" working hypothesis) or the remnants of a former northern population that later colonized the more southerly areas of the species' current range ("North down" working hypothesis). 
+Despite the very low individual dispersal distances, the species is widespread throughout the southwestern US. At the species' northern range limit, it has a disjunct population separated from the rest of the range by over 50 km. No genetic work has been done on this population, so it is not know whether the population represents a recent colonization event from the southern range ("South up" working hypothesis) or the remnants of a former northern population that later colonized the more southerly areas of the species' current range ("North down" working hypothesis). Distinguishing between these two hypotheses will give us information about historical patterns of species diversity in the southwestern US. The "North down" hypothesis could imply that central California was once hospitable to species that are now found in southern California, which could be a broadly interesting biogeographical pattern. Knowing the are of maximal genetic diversity at the northern range limit will also help with conservation prioritization, as genetically diverser populations are more "valuable" to the diversity of a species as a whole that low-diversity populations, and should therefore be prioritized for conservation resources. 
 
-To test these hypotheses, we used a restriction enzyme-based high throughput sequencing protocol generate to sequence data from Xantusia vigilis collected from various locations in the northern and southern populations. The protocol generates a large number of single nucleotide polymorphisms, which we use in downstream analyses. Here, I present the results form a subset of 16 of those individuals, taken from 10 collection locations. Despite the low sample size, population genetic results from a large number of loci (~10,000-20,000) from a few individuals can be as robust as inferences drawn form a large number of individuals at fewer (~20-50) loci (CITE). Given the low dispersal distances, our probability of getting an unrepresentative long-distance migrant is low.
+To test these hypotheses, we used a restriction enzyme-based high throughput sequencing protocol generate to sequence data from Xantusia vigilis collected from various locations in the northern population. The protocol generates sequences of a large number of single nucleotide polymorphisms, which we use in downstream analyses. Here, I present the results form a subset of 16 of those individuals, taken from 10 collection locations in the north and south of the northern population. These individuals provide a preliminary test for the "north up" and "south down" hypotheses. The collection locations are coded for by a 2-3 letter abbreviation, which I will use throughout the project. They are grouped into two major clusters:
 
 ```{r, echo=FALSE, eval=TRUE}
 # MAP
@@ -53,7 +53,7 @@ library(fields)
 
 I demultiplexed the data and clustered reads first within and then bewteen individuals using the pyRAD pipeline, which prepares data from .fastq files to be read into the alignment programs Muscle and Usearch, and then prepares output files suitable for further analysis. I read the data from 16 aligned individuals into R.
 
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 # first I read in a text document that has my SNP data formatted for a commonly-used population genetics
 # program, STRUCTURE. It has the individuals (16) as rows, with two rows per individual to represent
 # a diploid genotype. Each column is a SNP. Missing data is coded with a -9, and individual SNPS are 
@@ -68,7 +68,7 @@ str <- as.matrix(str)
 
 The dataset has `r nrow(str)/2` individuals and `r ncol(str)` loci. The first filtering step I applied was to remove all SNPs with more than two states. The reduced dataset is compatible with more R libraries than the original, as many libraries only take SNP data in this format. It also removes SNPs with missing data. 
 
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 
 # find the number of unique entries in each column of the matrix, save it as a vector
 count <- apply(str, 2, function(x)length(unique(x)))
@@ -161,7 +161,7 @@ The reduced dataset has `r ncol(clip6)` loci. We use this data set to get some b
 about the alleles.
 
 The first filtering step we applied was to identify loci that have a significant degree of linkage disequilibrium. We assessed linkage disequilibrium between all pairs of individuals and loci using the "ld" command in snpStats library. Due to our laboratory procedure, which begins by digesting the template DNA using restriction enzymes, our SNPs are not in any biologically relevant order. As such, this procedure identifies pairs of SNPs that are out of linkage equilibrium, rather than providing a linkage map. Further processing will be necessary to identify linkage groups.
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 ld <- ld(snpmat, stats="R.squared", depth=100, symmetric=T)
 ld <- as.matrix(ld)
 
@@ -169,16 +169,16 @@ diag(ld) <-1
 ```
 
 We use the "image" function to display a representative group of 100 x 100 loci. The diagonal elements are set to 1. Lighter colors indicate greater linkage diseqilibrium.
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 image(ld[1:100,1:100])
 ```
 We found that only `r sum(ld[ld>0.2])/(nrow(ld)*ncol(ld))*100`percent of the pairs of SNPs have a linkage disequilibrium value of less than 0.2, indicating that there is considerable disequilibrium in our sample. 
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 hist(ld[ld>0.2 & ld<1], xlab="pairwise linkage disequilibrium values", main="")
 ```
 
 We identified all SNPs that had a pairwise linkage disequilibrium score greater than 0.5. Although still not perfect, this filter should reduce the effect of spurious results due to assumption voilations in downstream analyses.
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 # first set the diagonals to zero so they are not the maximum
 diag(ld) <-0
 max <- apply(ld, 2, max)
@@ -195,7 +195,7 @@ snpmat.ld <- new("SnpMatrix", with.ld)
 After removing high-linkage disequilibrium SNPs, we have a matrix of `r ncol(no.ld)` SNPs.
 
 We calculated further summary statistics on both the with-ld and without-ld matrices.
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 # get the column summary - this gives an overview of the loci
 snpsum <- col.summary(snpmat)
 snpsum.no.ld <- col.summary(snpmat.no.ld)
@@ -211,7 +211,7 @@ par(mfrow=c(1,1))
 
 Nearly half of the loci (`r sum(snpsum$MAF>0.2)/length(snpsum$MAF)*100` percent) have a minor allele frequency greater than 0.2 in the full matrix. A smaller percentage of the loci in the no-LD matrix (`r sum(snpsum.no.ld$MAF>0.2)/length(snpsum.no.ld$MAF)*100` percent) have a minor allele frequency greater than 0.2, while `r sum(snpsum.ld$MAF>0.2)/length(snpsum.no.ld$MAF)*100` of the LD SNPs have a minor allele frequency greater than 0.2 This result raises the concern that the LD metric simply selected for SNPs that have a low MAF, rather than identifying true linkage diseqilibrium. Adding further samples may resolve the difference, although checking MAF when identifying pairs of SNPs in LD could be an important step in quality filtering even in a larger dataset. 
 
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 par(mfrow=c(2,2))
 hist(snpsum$z.HWE, xlab="HWE Z score", main="All")
 hist(snpsum.no.ld$z.HWE, xlab="HWE Z score", main="No LD")
@@ -225,7 +225,7 @@ In the LD-removed dataset, `r sum(snpsum.no.ld$z.HWE>-2)/length(snpsum.no.ld$z.H
 
 IN the LD set, `r sum(snpsum.ld$z.HWE>-2)/length(snpsum.no.ld$z.HWE)*100` percent of the alleles are in Hardy Weinburg equilibrium. The LD set more closely parallels the complete set than the non-LD set. 
 
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 par(mfrow=c(2,2))
 by.sample <- row.summary(snpmat)
 
@@ -332,8 +332,26 @@ To assess the genetic clusters in the data, we used a principle components analy
 Since I have a large number of loci available, I resampled 100 of them 50 times. Resampling will speed computation. It also generates an empirical quasi-confidence interval, as I can track the pairwise distance in PC-space between all groups at each iteration, and determine the standard error of those pairwise distances. I would consider two groups with a short pairwise mean distance in PC-space but non-overlapping confidence intervals to be more distinct genetically than two groups whose mean is larger but whose standard errors overlap. Calculating a single location based on the full dataset does not provide this type of confidence interval estimate. 
 
 To implement this method, I first transform the data into PC-space. After the transformation, I perform k-means clustering at values of k from 2 to 10, which is the number of geographical locations where samples were collected. I choose the optimal k by determining which k-value has the lowest Bayesian Information Criterion associated with it. By looking at multiple resampled data sets, I observed that the optimal value for the number of PCA axes to retain for analysis was 15, and the k value with the lowest associated BIC was 4. With these clusters, I perform a discriminant analysis of principle components to determine the pairwise distance between each cluster in PC-space.
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+samp <- sample(17291, 50, replace = FALSE)
+loc2.tab <- loc@tab[,samp]
+colnames(loc2.tab) <- c(1:50)
+# I convert to the data structure used by the adegenet package, providing a matrix of allele identities for each individual, a population identity vector, and the information that the alleles are coded using the "Presence/Absence" format.
+pop4 <- c("WS", "MVZ", "MVZ", "MVZ3", "OP", "DC", "DC", "CY", "CY", "BAL", "QT", "WS", "TUM", "GRIS", "SE", "SE")
 
-```{r, echo=FALSE, eval=TRUE}
+loc2 <- genind(loc2.tab, pop=pop4, type="PA")
+
+# the find.clusters command implements a k-means clustering algorithm 
+grp <- find.clusters(loc, n.pca=15, n.clust=4)
+
+table(pop(loc2), grp$grp)
+
+table.value(table(pop(loc2), grp$grp), col.lab=paste("inferred", 1:4),
+row.lab=c("WS", "MVZ", "MVZ3", "OP", "DC", "CY", "BAL", "QT", "WS", "TUM", "GRIS", "SE"))
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 dist.mat <- matrix(NA, ncol=16, nrow=50)
 
 for(i in 1:50){
@@ -367,7 +385,7 @@ av.sterr <- matrix(sterr, ncol=4, nrow=4)
 ```
 To return to a two-axis system, I apply multidimensional scaling with two axes retained to the mean pairwise distance matrix generated from the resampled loci. I plot the loci in MDS-coordinate space. To related the standard error generated by bootstrapping to the new coordinate system, I find SE/mean calculated from the distance matrices. I then find the MDS-space distance and plot "standard error bars" on both sides of the point parallel to the line between the two points. 
 
-```{r, echo=FALSE, eval=TRUE}
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
 mds <- cmdscale(av.dist, k = 2)
 
 plot(mds[,1], mds[,2], col=c("red", "yellow", "green", "blue"), pch=15, cex=0.3)
