@@ -1,25 +1,527 @@
 Project 1
 ========
 
-The project for the first half of the semester is due on October 24th as a pull
-request to this repository. The emphasis for this projet is on data analysis
-using tools of reproducible research including version tracking, knitr, and R
-markdown. You are free to answer any question you want, but you must provide a
-quantitative report that utilizes the material we have covered durign the first
-half of the semester.
+---
+title: "Project_1"
+author: "Iris"
+date: "October 19, 2014"
+output: html_document
+---
+This project is designed to assess the historical demography and current rates of gene flow bewteen populations of the Desert night lizard (Xantusia vigilis) in central California. Xantusia vigilis is a small, long-lived lizard that rarely travels beyond the small set of cover objects that make up its territory. Juveniles have a dispersal stage, but rarely move more than 200 meters from their place of birth. Given their life history, we expect to detect low gene flow rates between even relatively geographically close (>10 km of separation) sampling locations. 
 
-***Ground rules...***
-* Your document should layout your question in the introduction, provide a brief
-synopsis for why it is important, describe how you obtained the data, your general
-approach to analyzing the data, a summary of your results, a discussion, and
-mention of what your future directions would be.
-* You should post your project as a pull request to this repository as `*.Rmd`,
-`*.md`, and `.html` files. Prior to submitting the files, you should set
-`echo=FALSE` for all of the code chunks. This will hide the R code in the final
-document.
-* The final document should be approximately 5 pages when the code chunks are
-hidden and  you use a normal sized font.
-* I don't care what your question is or what subject domain it covers. The key is
-that it needs to be data driven. Microbiology, video game statisitics, immunology,
-whatever. Do something where it will be easy for you to come up with an interesting
-question and fun analysis.
+Despite the very low individual dispersal distances, the species is widespread throughout the southwestern US. At the species' northern range limit, it has a disjunct population separated from the rest of the range by over 50 km. No genetic work has been done on this population, so it is not know whether the population represents a recent colonization event from the southern range ("South up" working hypothesis) or the remnants of a former northern population that later colonized the more southerly areas of the species' current range ("North down" working hypothesis). Distinguishing between these two hypotheses will give us information about historical patterns of species diversity in the southwestern US. The "North down" hypothesis could imply that central California was once hospitable to species that are now found in southern California, which could be a broadly interesting biogeographical pattern. Knowing the are of maximal genetic diversity at the northern range limit will also help with conservation prioritization, as genetically diverser populations are more "valuable" to the diversity of a species as a whole that low-diversity populations, and should therefore be prioritized for conservation resources. 
+
+To test these hypotheses, we used a restriction enzyme-based high throughput sequencing protocol generate to sequence data from Xantusia vigilis collected from various locations in the northern population. The protocol generates sequences of a large number of single nucleotide polymorphisms, which we use in downstream analyses. Here, I present the results form a subset of 16 of those individuals, taken from 10 collection locations in the north and south of the northern population. These individuals provide a preliminary test for the "north up" and "south down" hypotheses. The collection locations are coded for by a 2-3 letter abbreviation, which I will use throughout the project. They are grouped into two major clusters:
+
+```{r, echo=FALSE, eval=TRUE}
+# MAP
+pop <- c("WS1", "MVZ1", "MVZ2", "MVZ3", "OP", "DC1", "DC2", "CY1", "CY2", "BAL", "QT", "WS2", "TUM", "GRIS", "SE1", "SE2")
+
+long <- c(-121.18226, -121.205, -121.205, -119.419, -121.1839, -119.42694, -119.42694, -119.7077, -119.7077, -119.444, -119.55, -121.18226, -120.658, -120.7366, -120.69833, -120.69833)
+
+
+lat <- c(36.4747, 36.4993, 36.4993, 34.7668, 36.5031,  34.7505,  34.7505, 34.8527, 34.8527, 34.88305, 
+         34.6425, 36.5081, 36.5347, 36.5208, 36.62027, 36.62027)
+
+pop3 <- c("WS", "MVZ1", "MVZ2", "OP", "DC", "CY", "BAL", "QT", "TUM", "GRIS", "SE")
+
+long3 <- c(-121.18226, -121.205,-119.449, -121.1839, -119.42694, -119.7077, -119.444, -119.55, -120.658, -120.7366, -120.69833)
+
+
+lat3 <- c(36.4047, 36.4993, 34.7668, 36.5531,  34.7005, 34.8527, 34.88305, 
+         34.6425, 36.5347, 36.458, 36.62027)
+
+plot(long3, lat3, type="n", xlab="longitude", ylab="latitude", main="Collection locations")
+
+text(x=long3, y=lat3, labels=pop3)
+
+```
+
+The two hypotheses ("North down" and "South up") lead to contrasting predictions about the phylogeographical and historical demographic results I should expect from the data. In the "North down"" case, I expect the more northerly populations to be positioned as early branches on a quasi-phylogenetic individual tree created with sequences from each individual. If I were investigating a recent expansion event, I would expect lower observed relative to expected heterozygosity in the southern populations. Regardless of which hypothesis is best supported, this is an old expansion event, so I expect the ratio of observed to expected heterozygosity to have equilibrated in the focal populations. The predictions generated by the "South up" hypothesis are the inverse of the those from the "North up" case. I would expect the southerly populations to be the earliest branches in the tree.
+
+My first step in testing the "South up" and "North down" is to identify the SNPs that conform to the modeling expectations for my downstream applications. Most population genetic statistics expect that all markers 1) meet Hardy-Weinburg expectations, 2) not be in linkage disequilibrium, and, for some applications 3) have no missing data. In a datset with many markers, some SNPs will inevitably be in linkage disequilibrium or out of Hardy-Weinburg equilibrium. Identifying these SNPs and eliminating them from downstream applications is critical to producing reliable results.
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+#first load libraries - the first four are genome-data focused 
+library(RADami)
+library(PopGenome)
+library(pegas)
+library(snpStats)
+library(ape)
+# spatial population genetics
+library(adegenet)
+# this one is for plotting - I like how it takes coordinates for plotting lines
+library(fields)
+```
+
+I demultiplexed the data and clustered reads first within and then bewteen individuals using the pyRAD pipeline, which prepares data from .fastq files to be read into the alignment programs Muscle and Usearch, and then prepares output files suitable for further analysis. I read the data from 16 aligned individuals into R.
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# first I read in a text document that has my SNP data formatted for a commonly-used population genetics
+# program, STRUCTURE. It has the individuals (16) as rows, with two rows per individual to represent
+# a diploid genotype. Each column is a SNP. Missing data is coded with a -9, and individual SNPS are 
+# coded 0, 1, 2...
+setwd("~/Desktop")
+
+str <- read.table("run1.str")
+
+# convert to matrix for manipulation purposes
+str <- as.matrix(str)
+```
+
+The dataset has `r nrow(str)/2` individuals and `r ncol(str)` loci. The first filtering step I applied was to remove all SNPs with more than two states. The reduced dataset is compatible with more R libraries than the original, as many libraries only take SNP data in this format. It also removed SNPs with missing data. 
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+# find the number of unique entries in each column of the matrix, save it as a vector
+count <- apply(str, 2, function(x)length(unique(x)))
+
+# bind the vector to the SNP matrix
+clip <- rbind(str, count)
+
+# remove all SNPs that have more than two states, for the purposes of the next few 
+# analyses. Reducing the number of SNPs allows me to run analyses in R that would be too
+# time-ineffecient with the full dataset. Also, the library I use first (snpStats) only accomodates 2 
+# SNP states. Finally, this step removes any SNPs with missing data. Since I'm looking for a 
+# reason to reduce the number of SNPs I'm using, this seems like a reasonable criterion for now. 
+
+clip2 <- clip[,!clip[33,]>2]
+
+# remove the count vector
+clip3 <- clip2[1:32,]
+
+# shift the individual ID numbers from being the first row to the row names
+rownames(clip3) <- clip3[,1]
+
+# remove the first row
+clip4 <- clip3[,2:1613]
+
+# shift the remaining SNPs to 0/1 coding  
+
+clip5 <- matrix(NA, nrow=32, ncol=1612)
+
+for(i in 2:ncol(clip4)){
+  ord <- order(unique(clip4[,i]))
+  ord2 <- unique(clip4[,i])[ord]
+  vec <- replace(clip4[,i], clip4[,i]==ord2[1], 0)
+	clip5[,i] <- replace(vec, vec>0, 1)
+}
+
+# return to a data frame
+clip5 <- data.frame(clip5)
+
+# make each row into a vector - coded such that each individual is a written number, 
+# and each half of the diploid genotype is indicated after the decimal
+one.1 <- as.numeric(clip5[1,])
+one.2 <- as.numeric(clip5[2,])
+two.1 <- as.numeric(clip5[3,])
+two.2 <- as.numeric(clip5[4,])
+three.1 <- as.numeric(clip5[5,])
+three.2 <- as.numeric(clip5[6,])
+four.1 <- as.numeric(clip5[7,])
+four.2 <- as.numeric(clip5[8,])
+five.1 <- as.numeric(clip5[9,])
+five.2 <- as.numeric(clip5[10,])
+six.1 <- as.numeric(clip5[11,])
+six.2 <- as.numeric(clip5[12,])
+seven.1 <- as.numeric(clip5[13,])
+seven.2 <- as.numeric(clip5[14,])
+eight.1 <- as.numeric(clip5[15,])
+eight.2 <- as.numeric(clip5[16,])
+nine.1 <- as.numeric(clip5[17,])
+nine.2 <- as.numeric(clip5[18,])
+ten.1 <- as.numeric(clip5[19,])
+ten.2 <- as.numeric(clip5[20,])
+eleven.1 <- as.numeric(clip5[21,])
+eleven.2 <- as.numeric(clip5[22,])
+twelve.1 <- as.numeric(clip5[23,])
+twelve.2 <- as.numeric(clip5[24,])
+thirteen.1 <- as.numeric(clip5[25,])
+thirteen.2 <- as.numeric(clip5[26,])
+fourteen.1 <- as.numeric(clip5[27,])
+fourteen.2 <- as.numeric(clip5[28,])
+fifteen.1 <- as.numeric(clip5[29,])
+fifteen.2 <- as.numeric(clip5[30,])
+sixteen.1 <- as.numeric(clip5[31,])
+sixteen.2 <- as.numeric(clip5[32,])
+
+# sum the two vectors that have each individual's genotype. Homozygotes for allele 1 are now
+# coded 0, heterozygotes are 1, homozygotes for allele 2 are coded 2
+clip6 <- rbind(one.1+one.2, two.1+two.2, three.1+three.2, four.1+four.2, five.1+five.2,
+six.1+six.2, seven.1+seven.2, eight.1+eight.2, nine.1+nine.2, ten.1+ten.2, eleven.1+eleven.2,
+twelve.1+twelve.2, thirteen.1+thirteen.2, fourteen.1+fourteen.2, fifteen.1+fifteen.2, sixteen.1+sixteen.2)
+
+# add 1 to all entries - genotypes are now 1, 2, or 3
+clip6 <- clip6-1
+
+clip6 <- clip6[,2:1612]
+
+# convert into SnpMatrix format for snpStats package
+snpmat <-  new("SnpMatrix", clip6)
+```
+
+The reduced dataset has `r ncol(clip6)` loci. I used this data set to get some basic summary statistics about the alleles.
+
+The first filtering step I applied was to identify loci that have a significant degree of linkage disequilibrium. I assessed linkage disequilibrium between all pairs of individuals and loci using the "ld" command in snpStats library. Due to our laboratory procedure, which begins by digesting the template DNA using restriction enzymes, our SNPs are not in any biologically relevant order. As such, this procedure identifies pairs of SNPs that are out of linkage equilibrium, rather than providing a linkage map. Further processing will be necessary to identify linkage groups.
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+ld <- ld(snpmat, stats="R.squared", depth=100, symmetric=T)
+ld <- as.matrix(ld)
+
+diag(ld) <-1
+```
+
+I use the "image" function to display a representative group of 100 x 100 loci. The diagonal elements (representing linkage of a SNP with itself) are set to 1. Lighter colors indicate greater linkage diseqilibrium.
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+image(ld[1:100,1:100])
+```
+I found that only `r sum(ld[ld>0.2])/(nrow(ld)*ncol(ld))*100`percent of the pairs of SNPs have a linkage disequilibrium value of less than 0.2, indicating that there is considerable disequilibrium in our sample. 
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+hist(ld[ld>0.2 & ld<1], xlab="pairwise linkage disequilibrium values", main="")
+```
+
+I identified all SNPs that had a pairwise linkage disequilibrium score greater than 0.5. Although still not perfect, this filter should reduce the effect of spurious results due to assumption voilations in downstream analyses if I decide that LD is likely to be a major concern for this dataset. 
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# first set the diagonals to zero so they are not the maximum
+diag(ld) <-0
+max <- apply(ld, 2, max)
+max.threshold <- max[max<0.5]
+above.max <- max[max>0.5]
+
+no.ld <- clip6[, as.numeric(names(max.threshold))]
+snpmat.no.ld <-  new("SnpMatrix", no.ld)
+
+with.ld <- clip6[,as.numeric(names(above.max))]
+snpmat.ld <- new("SnpMatrix", with.ld)
+```
+
+After removing high-linkage disequilibrium SNPs, we have a matrix of `r ncol(no.ld)` SNPs.
+
+We calculated further summary statistics on both the with-ld and without-ld matrices.
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# get the column summary - this gives an overview of the loci
+snpsum <- col.summary(snpmat)
+snpsum.no.ld <- col.summary(snpmat.no.ld)
+snpsum.ld <- col.summary(snpmat.ld)
+
+# looking at minor allele frequency
+par(mfrow=c(2,2))
+hist(snpsum$MAF, xlab="Minor Allele Frequency", main="All")
+hist(snpsum.no.ld$MAF, xlab="Minor Allele Frequency", main="No LD")
+hist(snpsum.ld$MAF, xlab="Minor Allele Frequency", main="LD")
+par(mfrow=c(1,1))
+```
+
+Nearly half of the loci (`r sum(snpsum$MAF>0.2)/length(snpsum$MAF)*100` percent) have a minor allele frequency greater than 0.2 in the full matrix. A smaller percentage of the loci in the no-LD matrix (`r sum(snpsum.no.ld$MAF>0.2)/length(snpsum.no.ld$MAF)*100` percent) have a minor allele frequency greater than 0.2, while `r sum(snpsum.ld$MAF>0.2)/length(snpsum.no.ld$MAF)*100` of the LD SNPs have a minor allele frequency greater than 0.2 This result raises the concern that the LD metric simply selected for SNPs that have a low MAF, rather than identifying true linkage diseqilibrium. Adding further samples may resolve the difference, although checking MAF when identifying pairs of SNPs in LD could be an important step in quality filtering even in a larger dataset. 
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+hist(snpsum$z.HWE, xlab="HWE Z score", main="All")
+hist(snpsum.no.ld$z.HWE, xlab="HWE Z score", main="No LD")
+hist(snpsum.ld$z.HWE, xlab="HWE Z score", main="LD")
+par(mfrow=c(1,1))
+```
+
+Less than half of the loci (`r sum(snpsum$z.HWE>-2)/length(snpsum$z.HWE)*100` percent) are within two standard deviations of Hardy Weinburg equilibrium. Loci in Hardy Weinburg function as though they are in a population in which neither allelic nor genotypic frequencies change year to year. Although precisely meeting these conditions is unlikely in a natural population, many population genetic statisitics assume Hardy Weinburg equilibrium. However, our dataset is small enough that the deviations could be due to our low number of individuals, rather than Hardy-Weinburg violating processes acting on our sampled populations. The results of further analyses with the assumption of Hardy-Weinburg should be interpreted with caution.
+
+In the LD-removed dataset, `r sum(snpsum.no.ld$z.HWE>-2)/length(snpsum.no.ld$z.HWE)*100` percent of the loci are in Hardy-Weinburg equilibrium. This indicates that linkage equilibrium and Hardy Weinburg equilibrium are related processes in our population.
+
+IN the LD set, `r sum(snpsum.ld$z.HWE>-2)/length(snpsum.no.ld$z.HWE)*100` percent of the alleles are in Hardy Weinburg equilibrium. The LD set more closely parallels the complete set than the non-LD set. 
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+by.sample <- row.summary(snpmat)
+
+het <- by.sample$Heterozygosity
+
+het.means <- c(mean(het[c(1,12)]), mean(het[2:4]), mean(het[5]), mean(het[6:7]), mean(het[8:9]), 
+               mean(het[10]), mean(het[11]), mean(het[13]), mean(het[14]), mean(het[15:16]))
+het.sd <- c(sd(het[c(1,12)]), sd(het[2:4]), sd(het[5]), sd(het[6:7]), sd(het[8:9]), 
+               sd(het[10]), sd(het[11]), sd(het[13]), sd(het[14]), sd(het[15:16]))
+pop <- c("WEST", "MVZ", "OP", "DC", "CUYAMA", "BALIM", "QT", "TUMEY", "GRISWOLD", "SE")
+
+xm <- 1:10
+ym <- seq(0, 0.2, by=0.2/9)
+plot(x=xm, y=ym, pch=15, xaxt="n", xlab = "", ylab="mean heterozygosity", type="n", main="All")
+points(het.means)
+axis(1, at=1:10, labels=F)
+xtick <- 1:10
+text(cex=1, x=1:10-0.25, y=-0.25, labels=pop, xpd=TRUE, srt=45, pos=1)
+
+# error bars
+for(i in 1:12){
+lines(x=c(xtick[i], xtick[i]), y=c(het.means[i],het.means[i]+het.sd[i]))
+lines(x=c(xtick[i], xtick[i]), y=c(het.means[i],het.means[i]-het.sd[i]))
+}
+
+###########################################
+by.sample.no.ld <- row.summary(snpmat.no.ld)
+
+het.no.ld <- by.sample.no.ld$Heterozygosity
+
+het.means.no.ld <- c(mean(het.no.ld[c(1,12)]), mean(het.no.ld[2:4]), mean(het.no.ld[5]), mean(het.no.ld[6:7]), mean(het.no.ld[8:9]), mean(het.no.ld[10]), mean(het.no.ld[11]), mean(het.no.ld[13]), mean(het.no.ld[14]), mean(het.no.ld[15:16]))
+het.sd.no.ld <- c(sd(het.no.ld[c(1,12)]), sd(het.no.ld[2:4]), sd(het.no.ld[5]), sd(het.no.ld[6:7]), sd(het.no.ld[8:9]), sd(het.no.ld[10]), sd(het.no.ld[11]), sd(het.no.ld[13]), sd(het.no.ld[14]), sd(het.no.ld[15:16]))
+pop <- c("WEST", "MVZ", "OP", "DC", "CUYAMA", "BALIM", "QT", "TUMEY", "GRISWOLD", "SE")
+
+plot(x=xm, y=ym, pch=15, xaxt="n", xlab = "", ylab="mean heterozygosity", type="n", main="No LD")
+points(het.means.no.ld)
+axis(1, at=1:10, labels=F)
+xtick <- 1:10
+text(cex=1, x=1:10-0.25, y=-0.25, labels=pop, xpd=TRUE, srt=45, pos=1)
+
+# error bars
+for(i in 1:12){
+lines(x=c(xtick[i], xtick[i]), y=c(het.means.no.ld[i],het.means.no.ld[i]+het.sd.no.ld[i]))
+lines(x=c(xtick[i], xtick[i]), y=c(het.means.no.ld[i],het.means.no.ld[i]-het.sd.no.ld[i]))
+}
+
+###################################################
+by.sample.ld <- row.summary(snpmat.ld)
+
+het.ld <- by.sample.ld$Heterozygosity
+
+het.means.ld <- c(mean(het.ld[c(1,12)]), mean(het.ld[2:4]), mean(het.ld[5]), mean(het.ld[6:7]), mean(het.ld[8:9]), mean(het.ld[10]), mean(het.ld[11]), mean(het.ld[13]), mean(het.ld[14]), mean(het.ld[15:16]))
+het.sd.ld <- c(sd(het.ld[c(1,12)]), sd(het.ld[2:4]), sd(het.ld[5]), sd(het.ld[6:7]), sd(het.ld[8:9]), sd(het.ld[10]), sd(het.ld[11]), sd(het.ld[13]), sd(het.ld[14]), sd(het.ld[15:16]))
+pop <- c("WEST", "MVZ", "OP", "DC", "CUYAMA", "BALIM", "QT", "TUMEY", "GRISWOLD", "SE")
+
+plot(x=xm, y=ym, pch=15, xaxt="n", xlab = "", ylab="mean heterozygosity", type="n", main="No LD")
+points(het.means.ld)
+axis(1, at=1:10, labels=F)
+xtick <- 1:10
+text(cex=1, x=1:10-0.25, y=-0.25, labels=pop, xpd=TRUE, srt=45, pos=1)
+
+# error bars
+for(i in 1:12){
+lines(x=c(xtick[i], xtick[i]), y=c(het.means.ld[i],het.means.ld[i]+het.sd.ld[i]))
+lines(x=c(xtick[i], xtick[i]), y=c(het.means.ld[i],het.means.ld[i]-het.sd.ld[i]))
+}
+
+par(mfrow=c(1,1))
+```
+
+Heterozygosity is low throughout the sample. This indicates that most of the variation in this SNP dataset exists between individuals, rather than within individuals. Biologically, this indicates small population sizes and relatively restricted gene flow between populations. The highest heterozygosity samples are from OP, BAL, and QT. OP is a northern population, so high heterozygosity there supports the "North down" hypothesis. QT and BAL are southern populations, which supports the "South up" hypothesis. When looking at only the low-LD SNPs, the West population (Norther) has both the highest heterozygosity and the greatest standard error. The high-LD SNPs parallel the full dataset. The results from the heterozygosity test don't conclusively support either hypothesis. However, due to the short dispersal distances and likely long time since colonization, we expect heterozygosity to reflect local population processes rather than colonization history. Further surveys may indicate that OP, BAL, QT and WS have higher population sizes than the other collection locations. 
+
+After having worked with the high- and low-LD SNP data sets in parallel with the full dataset, it is clear that linkage disequilibrium plays a large role in the observed distribution of genetic diversity the data. Determining the precise role and hypothesizing about the demographic events that led to the high observed linkage disequilibrium will require a larger dataset. At present, I will proceed with the full dataset for most further analyses. 
+
+The first critical analysis for differentiating between the "North down" and "South up" hypotheses is building a tree to see whether the northern populations are nested within the southern populations ("South up"), or vice versa. To build the tree, we used the R packages "adegenet" and "ape." We first built a pairwise matrix of Nei's genetic distance between each individual in the dataset using the adegenet package. We used that distance matrix to build a neighbor joining tree with the package "ape."  
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+setwd("~/Desktop")
+loc <- read.structure("run1.str", n.ind=16, n.loc=17291, col.lab=1, row.marknames=0, col.pop=0, 
+                      col.others=0, onerowperind=FALSE)
+loc <- na.replace(loc, "0")
+
+pop2 <- c("WS1", "MVZ1", "MVZ2", "MVZ3", "OP", "DC1", "DC2", "CY1", "CY2", "BAL", "QT", "WS2", "TUM", "GRIS", "SE1", "SE2")
+
+genepop <- genind2genpop(loc, pop=pop2)
+
+dist <- dist.genpop(genepop)
+
+par(mfrow=c(1,2))
+nj <- nj(dist)
+plot(nj)
+
+plot(long3, lat3, type="n", xlab="longitude", ylab="latitude", main="Collection locations")
+
+text(x=long3, y=lat3, labels=pop3, cex=0.7)
+
+par(mfrow=c(1,1))
+```
+
+
+The tree conforms exactly to the expectations of the "North down" hypothesis. Three of the four  more southerly populations (CY, BA, MVZ3 and QT) are a monophyletic group nested within the northern samples. SE, TUM, and GRIS also form monophyletic group, while the WS saample, MVZ1 and 2, and OP are in a large polytomy at the base of the tree. 
+
+As an independent assessment the genetic clusters in the data, I used a principle components analysis (PCA). This is a method that identifies mutually perpendicular axes of variation in the data, and assigns coordinates to each individual with respect to those axes. Individuals that occur in close proximity to each other in principle coordinate space are considered a genetic group. The method does not assume linkage equilibium or Hardy Weinburg equilibrium, making it ideal for our dataset, which violates both of these assumptions at a large proportion of loci. 
+
+To implement this method, I first transform the data into PC-space. After the transformation, I perform k-means clustering at values of k from 2 to 10, which is the number of geographical locations where samples were collected. I chose the optimal k value by determining which k-value has the lowest Bayesian Information Criterion associated with it. By looking at multiple resampled data sets, I observed that the optimal value for the number of PCA axes to retain for analysis was 15, and the k value with the lowest associated BIC was 4. With these clusters, I perform a discriminant analysis of principle components to determine the pairwise distance between each cluster in PC-space.
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+samp <- sample(17291, 100, replace = FALSE)
+loc2.tab <- loc@tab[,samp]
+colnames(loc2.tab) <- c(1:100)
+# I convert to the data structure used by the adegenet package, providing a matrix of allele identities for each individual, a population identity vector, and the information that the alleles are coded using the "Presence/Absence" format.
+pop4 <- c("WS", "MVZ", "MVZ", "MVZ3", "OP", "DC", "DC", "CY", "CY", "BAL", "QT", "WS", "TUM", "GRIS", "SE", "SE")
+
+loc2 <- genind(loc2.tab, pop=pop4, type="PA")
+
+# the find.clusters command implements a k-means clustering algorithm 
+grp <- find.clusters(loc, n.pca=15, n.clust=4)
+
+table(pop(loc2), grp$grp)
+
+table.value(table(pop(loc2), grp$grp), col.lab=paste("inferred", 1:4),
+row.lab=c("WS", "MVZ", "MVZ3", "OP", "DC", "CY", "BAL", "QT", "WS", "TUM", "GRIS", "SE"))
+```
+
+The results of the discriminant analysis clearly show four genetic clusters in the data. The first cluster contains two WS individuals, two MVZ1 individuals, and the OP individual. These are all drawn from the north-western cluster. The second cluster includes the  MVZ3 individual, two DC individuals, and a QT individual, all from the southern group. The third is comprised of WS,TUM, and GRIS. This group combines ancestry from the two northern groups. The fourth group is two CY and one BAL sample, from the southern population. The discriminant analysis clusters strongly reflect both the neighbor joining tree and the geographic split of collection locations, but suggest some contemporary gene flow between the two northern clusters, and suggest a division between the two southern clusters that is not immediately evident from geography. 
+
+Since I have a large number of loci available, I resampled 100 of them 50 times. Resampling will also speed computation relative to the full dataset. It also generates an empirical quasi-confidence interval, as I can track the pairwise distance in PC-space between all groups at each iteration, and determine the standard error of those pairwise distances. I would consider two groups with a short pairwise mean distance in PC-space but non-overlapping confidence intervals to be more distinct genetically than two groups whose mean is larger but whose standard errors overlap. Calculating a single location based on the full dataset does not provide this type of confidence interval estimate. 
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+dist.mat <- matrix(NA, ncol=16, nrow=50)
+
+for(i in 1:50){
+samp <- sample(17291, 100, replace = FALSE)
+
+loc2.tab <- loc@tab[,samp]
+colnames(loc2.tab) <- c(1:100)
+# I convert to the data structure used by the adegenet package, providing a matrix of allele identities for each individual, a population identity vector, and the information that the alleles are coded using the "Presence/Absence" format.
+loc2 <- genind(loc2.tab, pop=pop, type="PA")
+
+# the find.clusters command implements a k-means clustering algorithm 
+grp <- find.clusters(loc, n.pca=15, n.clust=4)
+
+# discriminant analysis of principle components
+dapc1 <- dapc(loc, grp$grp, n.pca=15, n.da=2)
+
+#add pairwise distance to the distance matrix
+dist.mat[i,] <- as.vector(rdist(dapc1$grp.coord, dapc1$grp.coord))
+}
+
+means <- (colSums(dist.mat)/50)/10000000000000
+
+av.dist <- matrix(means, ncol=4, nrow=4)
+
+diag(av.dist) = 0
+
+sterr <-  (apply(dist.mat, 2, "sd")/50)/10000000000000
+
+av.sterr <- matrix(sterr, ncol=4, nrow=4)
+
+```
+To return to a two-axis system, I apply multidimensional scaling with two axes retained to the mean pairwise distance matrix generated from the resampled loci. I plot the loci in MDS-coordinate space. To related the standard error generated by bootstrapping to the new coordinate system, I find SE/mean calculated from the distance matrices. I then find the MDS-space distance and plot "standard error bars" on both sides of the point parallel to the line between the two points. 
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+mds <- cmdscale(av.dist, k = 2)
+
+plot(mds[,1], mds[,2], col=c("red", "yellow", "green", "blue"), pch=15, cex=0.3)
+
+# connect all 
+arrows(x0=mds[1,1], y0=mds[1,2], x1=mds[2:4,1], y1=mds[2:4,2], length=0, lwd=2)
+arrows(x0=mds[2,1], y0=mds[2,2], x1=mds[2:4,1], y1=mds[2:4,2], length=0, lwd=2)
+arrows(x0=mds[3,1], y0=mds[3,2], x1=mds[2:4,1], y1=mds[2:4,2], length=0, lwd=2)
+arrows(x0=mds[4,1], y0=mds[4,2], x1=mds[2:4,1], y1=mds[2:4,2], length=0, lwd=2)
+
+# find the relative length of the SE bars
+length1 <- sqrt((abs(mds[1,1])-abs(mds[2,1]))^2+(abs(mds[1,2])-abs(mds[2,2]))^2)
+length2 <- sqrt((abs(mds[1,1])-abs(mds[3,1]))^2+(abs(mds[1,2])-abs(mds[3,2]))^2)
+length3 <- sqrt((abs(mds[1,1])-abs(mds[4,1]))^2+(abs(mds[1,2])-abs(mds[4,2]))^2)
+
+length4 <- sqrt((abs(mds[2,1])-abs(mds[1,1]))^2+(abs(mds[2,2])-abs(mds[1,2]))^2)
+length5 <- sqrt((abs(mds[2,1])-abs(mds[3,1]))^2+(abs(mds[2,2])-abs(mds[3,2]))^2)
+length6 <- sqrt((abs(mds[2,1])-abs(mds[4,1]))^2+(abs(mds[2,2])-abs(mds[4,2]))^2)
+
+length7 <- sqrt((abs(mds[3,1])-abs(mds[1,1]))^2+(abs(mds[3,2])-abs(mds[1,2]))^2)
+length8 <- sqrt((abs(mds[3,1])-abs(mds[2,1]))^2+(abs(mds[3,2])-abs(mds[2,2]))^2)
+length9 <- sqrt((abs(mds[3,1])-abs(mds[4,1]))^2+(abs(mds[3,2])-abs(mds[4,2]))^2)
+
+length10 <- sqrt((abs(mds[4,1])-abs(mds[1,1]))^2+(abs(mds[4,2])-abs(mds[1,2]))^2)
+length11 <- sqrt((abs(mds[4,1])-abs(mds[2,1]))^2+(abs(mds[4,2])-abs(mds[2,2]))^2)
+length12 <- sqrt((abs(mds[4,1])-abs(mds[3,1]))^2+(abs(mds[4,2])-abs(mds[3,2]))^2)
+
+# find the angle for the bars
+x11.sd <- mds[1,1]-(mds[1,1]-mds[2,1])*av.sterr[2,1]/length1
+y11.sd <- mds[1,2]-(mds[1,2]-mds[2,2])*av.sterr[2,1]/length1
+x12.sd <- mds[1,1]+(mds[1,1]-mds[2,1])*av.sterr[2,1]/length1
+y12.sd <- mds[1,2]+(mds[1,2]-mds[2,2])*av.sterr[2,1]/length1
+
+x21.sd <- mds[1,1]-(mds[1,1]-mds[3,1])*av.sterr[3,1]/length2
+y21.sd <- mds[1,2]-(mds[1,2]-mds[3,2])*av.sterr[3,1]/length2
+x22.sd <- mds[1,1]+(mds[1,1]-mds[3,1])*av.sterr[3,1]/length2
+y22.sd <- mds[1,2]+(mds[1,2]-mds[3,2])*av.sterr[3,1]/length2
+
+x31.sd <- mds[1,1]-(mds[1,1]-mds[4,1])*av.sterr[4,1]/length3
+y31.sd <- mds[1,2]-(mds[1,2]-mds[4,2])*av.sterr[4,1]/length3
+x32.sd <- mds[1,1]+(mds[1,1]-mds[4,1])*av.sterr[4,1]/length3
+y32.sd <- mds[1,2]+(mds[1,2]-mds[4,2])*av.sterr[4,1]/length3
+
+w11.sd <- mds[2,1]-(mds[2,1]-mds[1,1])*av.sterr[2,1]/length4
+z11.sd <- mds[2,2]-(mds[2,2]-mds[1,2])*av.sterr[2,1]/length4
+w12.sd <- mds[2,1]+(mds[2,1]-mds[1,1])*av.sterr[2,1]/length4
+z12.sd <- mds[2,2]+(mds[2,2]-mds[1,2])*av.sterr[2,1]/length4
+
+w31.sd <- mds[2,1]-(mds[2,1]-mds[3,1])*av.sterr[3,1]/length5
+z31.sd <- mds[2,2]-(mds[2,2]-mds[3,2])*av.sterr[3,1]/length5
+w32.sd <- mds[2,1]+(mds[2,1]-mds[3,1])*av.sterr[3,1]/length5
+z32.sd <- mds[2,2]+(mds[2,2]-mds[3,2])*av.sterr[3,1]/length5
+
+w41.sd <- mds[2,1]-(mds[2,1]-mds[4,1])*av.sterr[4,1]/length6
+z41.sd <- mds[2,2]-(mds[2,2]-mds[4,2])*av.sterr[4,1]/length6
+w42.sd <- mds[2,1]+(mds[2,1]-mds[4,1])*av.sterr[4,1]/length6
+z42.sd <- mds[2,2]+(mds[2,2]-mds[4,2])*av.sterr[4,1]/length6
+
+m11.sd <- mds[3,1]-(mds[3,1]-mds[1,1])*av.sterr[2,3]/length7
+n11.sd <- mds[3,2]-(mds[3,2]-mds[1,2])*av.sterr[2,3]/length7
+m12.sd <- mds[3,1]+(mds[3,1]-mds[1,1])*av.sterr[2,3]/length7
+n12.sd <- mds[3,2]+(mds[3,2]-mds[1,2])*av.sterr[2,3]/length7
+
+m21.sd <- mds[3,1]-(mds[3,1]-mds[2,1])*av.sterr[3,2]/length8
+n21.sd <- mds[3,2]-(mds[3,2]-mds[2,2])*av.sterr[3,2]/length8
+m22.sd <- mds[3,1]+(mds[3,1]-mds[2,1])*av.sterr[3,2]/length8
+n22.sd <- mds[3,2]+(mds[3,2]-mds[2,2])*av.sterr[3,2]/length8
+
+m41.sd <- mds[3,1]-(mds[3,1]-mds[4,1])*av.sterr[4,3]/length9
+n41.sd <- mds[3,2]-(mds[3,2]-mds[4,2])*av.sterr[4,3]/length9
+m42.sd <- mds[3,1]+(mds[3,1]-mds[4,1])*av.sterr[4,3]/length9
+n42.sd <- mds[3,2]+(mds[3,2]-mds[4,2])*av.sterr[4,3]/length9
+
+a11.sd <- mds[4,1]-(mds[4,1]-mds[1,1])*av.sterr[4,1]/length10
+b11.sd <- mds[4,2]-(mds[4,2]-mds[1,2])*av.sterr[4,1]/length10
+a12.sd <- mds[4,1]+(mds[4,1]-mds[1,1])*av.sterr[4,1]/length10
+b12.sd <- mds[4,2]+(mds[4,2]-mds[1,2])*av.sterr[4,1]/length10
+
+a21.sd <- mds[4,1]-(mds[4,1]-mds[2,1])*av.sterr[4,2]/length11
+b21.sd <- mds[4,2]-(mds[4,2]-mds[2,2])*av.sterr[4,2]/length11
+a22.sd <- mds[4,1]+(mds[4,1]-mds[2,1])*av.sterr[4,2]/length11
+b22.sd <- mds[4,2]+(mds[4,2]-mds[2,2])*av.sterr[4,2]/length11
+
+a41.sd <- mds[4,1]-(mds[4,1]-mds[3,1])*av.sterr[4,3]/length12
+b41.sd <- mds[4,2]-(mds[4,2]-mds[3,2])*av.sterr[4,3]/length12
+a42.sd <- mds[4,1]+(mds[4,1]-mds[3,1])*av.sterr[4,3]/length12
+b42.sd <- mds[4,2]+(mds[4,2]-mds[3,2])*av.sterr[4,3]/length12
+
+#plot the bars
+arrows(x0=mds[1,1], y0=mds[1,2], x1=x11.sd, y1=y11.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[1,1], y0=mds[1,2], x1=x12.sd, y1=y12.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[1,1], y0=mds[1,2], x1=x21.sd, y1=y21.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[1,1], y0=mds[1,2], x1=x22.sd, y1=y22.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[1,1], y0=mds[1,2], x1=x31.sd, y1=y31.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[1,1], y0=mds[1,2], x1=x32.sd, y1=y32.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[2,1], y0=mds[2,2], x1=w11.sd, y1=z11.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[2,1], y0=mds[2,2], x1=w12.sd, y1=z12.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[2,1], y0=mds[2,2], x1=w31.sd, y1=z31.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[2,1], y0=mds[2,2], x1=w32.sd, y1=z32.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[2,1], y0=mds[2,2], x1=w41.sd, y1=z41.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[2,1], y0=mds[2,2], x1=w42.sd, y1=z42.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[3,1], y0=mds[3,2], x1=m11.sd, y1=n11.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[3,1], y0=mds[3,2], x1=m12.sd, y1=n12.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[3,1], y0=mds[3,2], x1=m21.sd, y1=n21.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[3,1], y0=mds[3,2], x1=m22.sd, y1=n22.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[3,1], y0=mds[3,2], x1=m41.sd, y1=n41.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[3,1], y0=mds[3,2], x1=m42.sd, y1=n42.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[4,1], y0=mds[4,2], x1=a11.sd, y1=b11.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[4,1], y0=mds[4,2], x1=a12.sd, y1=b12.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[4,1], y0=mds[4,2], x1=a21.sd, y1=b21.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[4,1], y0=mds[4,2], x1=a22.sd, y1=b22.sd, length=0, col="red", lwd=3)
+
+arrows(x0=mds[4,1], y0=mds[4,2], x1=a41.sd, y1=b41.sd, length=0, col="red", lwd=3)
+arrows(x0=mds[4,1], y0=mds[4,2], x1=a42.sd, y1=b42.sd, length=0, col="red", lwd=3)
+
+```
+This analysis shows that the groupings are well supported by bootstrapping, indicating that the DAPC clusters reflect demograhic events that affected the entire genome, rather than being determined by strong effects on a few alleles. 
+
+
+In sum, the "North down" hypothesis is strongly supported by the genetic data. The clustering algorithm supports these results, while also identifing gene flow between the two northern collection groups and a division between the southern collection locations. The linkage disequilibrium results show that LD may be an important factor in these populations, but the exact process that produced the LD and the probable effects on the population genetic results are not clear in my reduced dataset. Heterozygosity levels hit at variable local population sizes, which should be investigated by further field work. 
+
+
